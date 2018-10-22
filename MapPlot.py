@@ -132,18 +132,18 @@ for i in range(0,len(heightList)):
     j2 = int(heightList['j'][i])
     fHeight = float(heightList['Height'][i])
     
-    # 周辺の平均標高取得
-    fAveHeight = heightList[ ((i2-1)<=heightList['i']) & (heightList['i'] <= (i2+1)) & ((j2-1)<=heightList['j']) & (heightList['j'] <= (j2+1)) ]['Height'].mean()
-    fAveHeight = round(fAveHeight,1)
+    # 周囲の最小標高取得
+    fMinHeight = heightList[ ((i2-1)<=heightList['i']) & (heightList['i'] <= (i2+1)) & ((j2-1)<=heightList['j']) & (heightList['j'] <= (j2+1)) ]['Height'].min()
+    fMinHeight = round(fMinHeight,1)
 
-	# 周囲の平均標高と比較して、10%以上高ければ値を持たせる(1とする)
-    if (fAveHeight*1.1 < fHeight):
+	# 周囲の最小標高と比較して、30%以上高ければ値を持たせる(1とする)
+    if (fMinHeight*1.3 < fHeight):
         gradient.append(1)
     else:
         gradient.append(0)
         
     # デバッグ用情報プロット
-    #print('id=' + str(i2) + '_' + str(j2) + ' ' + 'Height=' + str(fHeight) + ' ' + 'AreaHeight=' + str(fAveHeight))
+    #print('id=' + str(i2) + '_' + str(j2) + ' ' + 'Height=' + str(fHeight) + ' ' + 'AreaMinHeight=' + str(fMinHeight))
 
 #斜度判定結果を配列に格納する(標高配列にGradient列として新規追加)
 heightList['Gradient'] = gradient
@@ -181,7 +181,7 @@ mapData.choropleth(
     fill_color='PuRd',              # 表示設定 (色)
     fill_opacity=0.4,               # 表示設定 (塗りつぶしの透明度)
     line_opacity=0.2,               # 表示設定 (線の透明度)
-    legend_name='Gradient (Red:10% higher than neighbor average)'  # 表示設定 (凡例)
+    legend_name='Gradient (Red:30% higher than neighbor minimum)'  # 表示設定 (凡例)
 )
 mapData.save('Output_Gradient.html')
 
