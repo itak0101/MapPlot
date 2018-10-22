@@ -136,8 +136,8 @@ for i in range(0,len(heightList)):
     fMinHeight = heightList[ ((i2-1)<=heightList['i']) & (heightList['i'] <= (i2+1)) & ((j2-1)<=heightList['j']) & (heightList['j'] <= (j2+1)) ]['Height'].min()
     fMinHeight = round(fMinHeight,1)
 
-	# 周囲の最小標高と比較して、30%以上高ければ値を持たせる(1とする)
-    if (fMinHeight*1.3 < fHeight):
+	# 周囲の最小標高と比較して、25%以上高ければ値を持たせる(1とする)
+    if (0.25 < abs(fMinHeight-fHeight)/fHeight):
         gradient.append(1)
     else:
         gradient.append(0)
@@ -181,7 +181,7 @@ mapData.choropleth(
     fill_color='PuRd',              # 表示設定 (色)
     fill_opacity=0.4,               # 表示設定 (塗りつぶしの透明度)
     line_opacity=0.2,               # 表示設定 (線の透明度)
-    legend_name='Gradient (Red:30% higher than neighbor minimum)'  # 表示設定 (凡例)
+    legend_name='Gradient (Red:25% higher than neighbor minimum)'  # 表示設定 (凡例)
 )
 mapData.save('Output_Gradient.html')
 
