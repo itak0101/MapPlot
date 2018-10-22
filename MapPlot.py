@@ -137,7 +137,7 @@ for i in range(0,len(heightList)):
     fMinHeight = round(fMinHeight,1)
 
 	# 周囲の最小標高と比較して、25%以上高ければ値を持たせる(1とする)
-    if (0.25 < abs(fMinHeight-fHeight)/fHeight):
+    if (0.25 < abs(fMinHeight-fHeight)/fMinHeight):
         gradient.append(1)
     else:
         gradient.append(0)
