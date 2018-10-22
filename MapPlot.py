@@ -15,19 +15,19 @@ from geojson import Point, Polygon, Feature, FeatureCollection
 #---------------------------------------------------------------------
 # 標高ファイルを作成・出力する
 #---------------------------------------------------------------------
-def MakeHeightFile(fOriginLat,fOriginLon):
+def MakeHeightFile(fOriginLat, fOriginLon, nGridCount, fGridSize):
 
 	# 出力ファイルのオープン
 	fOutput = open("HeightList.csv", "w")
-	fOutput.write("i,j,Lat,Lon,Height\n")
+	fOutput.write("id,i,j,Lat,Lon,Height\n")
 	
 	# 標高データの取得と出力
-	for i in range(-4,5):
-		for j in range(-4,5):
-			fLat = round(fOriginLat + (0.01 * i), 6)
-			fLon = round(fOriginLon + (0.01 * j), 6)
+	for i in range(-nGridCount,nGridCount+1):
+		for j in range(-nGridCount,nGridCount+1):
+			fLat = round(fOriginLat + (fGridSize * i), 6)
+			fLon = round(fOriginLon + (fGridSize * j), 6)
 			fHeight = GetHeight(fLat, fLon)
-			fOutput.write("{0},{1},{2},{3},{4}\n".format(i, j, fLat, fLon, fHeight))
+			fOutput.write("{0}_{1},{2},{3},{4},{5},{6}\n".format(i, j, i, j, fLat, fLon, fHeight))
 			
 	# 出力ファイルのクローズ
 	fOutput.close()
@@ -39,7 +39,7 @@ def MakeHeightFile(fOriginLat,fOriginLon):
 #---------------------------------------------------------------------
 def GetHeight(fLat, fLon):
 
-	# 国土地理院Webに付加を掛けすぎるとBANされるので少し間隔を置く
+	# 国土地理院Webに負荷を掛けすぎないよう少し間隔を置く
 	sleep(2)
 
 	# APIアクセスのURL設定
@@ -107,38 +107,55 @@ def isDanger(fHeight):
 # メイン処理
 #---------------------------------------------------------------------
 
+# ---- 設定 ----
 # 地図の中心座標を設定
 fOriginLat = 35.7882773
 fOriginLon = 138.997259
 
-# 標高ファイルの作成
-#MakeHeightFile(fOriginLat,fOriginLon)
+# 描画設定
+nGridCount = 4                           # 中心から上下左右に何グリッド描画する
+fGridSize  = 0.01                        # グリッドサイズ (緯度経度)
+RegendScale = [0,700,900,1100,1300,1500] # 凡例レンジ (6要素まで設定可能)
+sFillColor  = 'PuRd'
 
-# 地図データの作成 (+描画範囲の設定)
-mapData = folium.Map(location=[fOriginLat,fOriginLon], zoom_start=13, tiles='Stamen Terrain')
+# ---- 標高ファイルの作成と読み込み ----
+# 標高ファイルの作成
+MakeHeightFile(fOriginLat,fOriginLon,nGridCount,fGridSize)
 
 # 標高ファイルの読み込み
 hightList = pd.read_csv('HeightList.csv')
 
-# ポリゴンをマップに追加
+
+# ---- 地図データを作成し、ポリゴンを重ねる ----
+# 地図データの作成 (+初期表示設定)
+mapData = folium.Map(location=[fOriginLat,fOriginLon], zoom_start=13, tiles='Stamen Terrain')
+
+# ポリゴンデータを作成 (GeoJSON形式)
 featureList = []
-for i in range(-4,5):
-	for j in range(-4,5):
-		fLat = round(fOriginLat + (0.01 * i), 6)
-		fLon = round(fOriginLon + (0.01 * j), 6)
-		poly = Polygon([[(fLon-0.005, fLat-0.005), (fLon+0.005, fLat-0.005), (fLon+0.005, fLat+0.005), (fLon-0.005, fLat+0.005)]])
-		feat = Feature(name='Test1', geometry=poly, id=999)
+fHalfGrid  = (fGridSize/2.0)
+for i in range(-nGridCount,nGridCount+1):
+	for j in range(-nGridCount,nGridCount+1):
+		id = str(i) + '_' + str(j)
+		fLat = round(fOriginLat + (fGridSize * i), 6)
+		fLon = round(fOriginLon + (fGridSize * j), 6)
+		poly = Polygon([[(fLon-fHalfGrid, fLat-fHalfGrid), (fLon+fHalfGrid, fLat-fHalfGrid), (fLon+fHalfGrid, fLat+fHalfGrid), (fLon-fHalfGrid, fLat+fHalfGrid)]])
+		feat = Feature(name=id, geometry=poly, id=id)
 		featureList.append(feat)
 my_feature_collection = FeatureCollection(featureList)
+
+# GeoJSONデータの確認
 #print (my_feature_collection)
 #print ('\n')
+
+# 形状データと標高データを紐付ける
 mapData.choropleth(
     name='choropleth',
     geo_data=my_feature_collection, # 形状データの設定 (GeoJSON形式で渡す)
     key_on='feature.id',            # 形状データの設定 (どの要素をキーとするか)
     data=hightList,                 # 標高値の設定 (Pandas行列データを渡す)
-    columns=['i', 'Height'],        # 標高値の設定 (第一要素がキー、第二要素が値)
-    fill_color='YlGn',              # 表示設定 (色)
+    columns=['id', 'Height'],       # 標高値の設定 (第一要素がキー、第二要素が値)
+    threshold_scale=RegendScale,    # 凡例の設定
+    fill_color=sFillColor,          # 表示設定 (色)
     fill_opacity=0.4,               # 表示設定 (塗りつぶしの透明度)
     line_opacity=0.2,               # 表示設定 (線の透明度)
     legend_name='Height[m]'         # 表示設定 (凡例)
@@ -154,7 +171,7 @@ for i in range(0,len(hightList)):
     sColor = '#008000'
     popup = 'Safety'
 
-    # 危険度判定
+    # 危険度判定 (TRUEの場合表示色を変更する)
     if (isDanger(fHeight)):
         sColor = '#C9008A'
         popup = 'Danger'
@@ -166,48 +183,32 @@ for i in range(0,len(hightList)):
     folium.CircleMarker([fLat, fLon], radius=20, popup=popup, color=sColor, fill_color=sColor).add_to(mapData)
 
 # 地図データをHTMLとして出力
-mapData.save('map.html')
-
+mapData.save('Output.html')
 
 #---------------------------------------------------------------------
-# メモ
+# Reference
 #---------------------------------------------------------------------
 #
-# 地図の描画範囲を設定
-#mapData = folium.Map(location=[-30.159215, 138.955078], zoom_start=4, tiles='Stamen Terrain')
+# [01] Folium QuickStart
+# https://python-visualization.github.io/folium/quickstart.html
 #
-## 都市のデータを配列で用意（本来はDBやcsvファイルから取得）
-#cities = (
-#    {'lat': -35.473468, 'lon': 149.012368, 'value': 1, 'name': 'Australian Capital Territory'},
-#    {'lat': -31.253218, 'lon': 146.921099, 'value': 2, 'name': 'New South Wales'},
-#    {'lat': -19.491411, 'lon': 132.550960, 'value': 3, 'name': 'Northern Territory'},
-#    {'lat': -20.917574, 'lon': 142.702796, 'value': 4, 'name': 'Queensland'},
-#    {'lat': -30.000232, 'lon': 136.209155, 'value': 5, 'name': 'South Australia'},
-#    {'lat': -41.454520, 'lon': 145.970665, 'value': 6, 'name': 'Tasmania'},
-#    {'lat': -37.471308, 'lon': 144.785153, 'value': 7, 'name': 'Victoria'},
-#    {'lat': -27.672817, 'lon': 121.628310, 'value': 8, 'name': 'Western Australia'}
-#)
+# [02] Folium 0.5.0 documentation
+# http://python-visualization.github.io/folium/docs-v0.5.0/py-modindex.html
 #
-## 都市のマーカーを追加
-#for city in cities:
-#    folium.CircleMarker(
-#            [city['lat'], city['lon']],
-#            radius=city['value'],
-#            popup=city['name'],
-#            color='#C9008A',
-#            fill_color='#C9008A',
-#    ).add_to(mapData)
+# [03] Python-GeoJson documentation
+# https://python-geojson.readthedocs.io/en/latest/
 #
-## 地図データをHTMLとして出力
-#mapData.save('map.html')
+# [04] 国土地理院 標高API 仕様
+# https://maps.gsi.go.jp/development/api.html
+#
+# [05] #292 Choropleth map with Folium / python-graph-gallery.com
+# https://python-graph-gallery.com/292-choropleth-map-with-folium/
 #
 #
+#---------------------------------------------------------------------
+# Memo
+#---------------------------------------------------------------------
 #
-#
-#latitude = '35.584047' 
-#longitude = '139.665936'
-#altitude = '14.000000'
-#my_point = Point((float(longitude), float(latitude), float(altitude)))
-#my_feature = Feature(geometry=my_point)
-#my_feature_collection = FeatureCollection(my_feature)
-#print my_feature_collection
+# [A] GeoJSON geopath line color
+# 'BuGn', 'BuPu', 'GnBu', 'OrRd', 'PuBu', 'PuBuGn', 'PuRd', 'RdPu',
+# 'YlGn', 'YlGnBu', 'YlOrBr', and 'YlOrRd'.
