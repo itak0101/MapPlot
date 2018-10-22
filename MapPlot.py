@@ -6,9 +6,9 @@
 import folium
 import requests # Apache2 Licensed HTTP library
 import json     # Data Format
-from time import sleep
 import csv
 import pandas as pd
+from time import sleep
 from geojson import Point, Polygon, Feature, FeatureCollection
 
 
@@ -28,7 +28,7 @@ def MakeHeightFile(fOriginLat, fOriginLon, nGridCount, fGridSize):
 			fLon = round(fOriginLon + (fGridSize * j), 6)
 			fHeight = GetHeight(fLat, fLon)
 			fOutput.write("{0}_{1},{2},{3},{4},{5},{6}\n".format(i, j, i, j, fLat, fLon, fHeight))
-			
+
 	# 出力ファイルのクローズ
 	fOutput.close()
 
@@ -39,8 +39,8 @@ def MakeHeightFile(fOriginLat, fOriginLon, nGridCount, fGridSize):
 #---------------------------------------------------------------------
 def GetHeight(fLat, fLon):
 
-	# 国土地理院Webに負荷を掛けすぎないよう少し間隔を置く
-	sleep(2)
+	# 国土地理院Webに負荷を掛けすぎないよう少し間隔を置く(秒単位で指定)
+	sleep(3)
 
 	# APIアクセスのURL設定
 	sURL = 'http://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon={0}&lat={1}&outtype=JSON'.format(fLon, fLat)
@@ -55,7 +55,7 @@ def GetHeight(fLat, fLon):
 	# 受信データからキー項目を抽出する
 	keyList = data.keys()
 	sorted(keyList)
-		
+	
 	# 送信データをそのまま出力
 	#fOutput.write("#---- Request ----\n\n")
 	#fOutput.write(sURL + "\n\n\n")
@@ -98,7 +98,7 @@ def isDanger(fHeight):
     if (1000.0 < fHeight):
         res = True
     else:
-    	res = False
+        res = False
     
     return res
 
@@ -109,24 +109,47 @@ def isDanger(fHeight):
 
 # ---- 設定 ----
 # 地図の中心座標を設定
-fOriginLat = 35.7882773
-fOriginLon = 138.997259
+fOriginLat = 35.7882773   # 緯度
+fOriginLon = 138.997259   # 経度
 
 # 描画設定
-nGridCount = 4                           # 中心から上下左右に何グリッド描画する
-fGridSize  = 0.01                        # グリッドサイズ (緯度経度)
-RegendScale = [0,700,900,1100,1300,1500] # 凡例レンジ (6要素まで設定可能)
-sFillColor  = 'PuRd'
+nGridCount = 6            # 中心から上下左右に何グリッド描画する
+fGridSize  = 0.002        # グリッドサイズ (緯度経度)
+
 
 # ---- 標高ファイルの作成と読み込み ----
-# 標高ファイルの作成
+# 標高ファイルの作成 (国土地理院Webから標高データを取得)
 MakeHeightFile(fOriginLat,fOriginLon,nGridCount,fGridSize)
 
 # 標高ファイルの読み込み
-hightList = pd.read_csv('HeightList.csv')
+heightList = pd.read_csv('HeightList.csv')
+
+# 斜度判定 (標高データを基に傾斜の大きさを判定する)
+gradient = []
+for i in range(0,len(heightList)):
+    # 当該地点の標高取得
+    i2 = int(heightList['i'][i])
+    j2 = int(heightList['j'][i])
+    fHeight = float(heightList['Height'][i])
+    
+    # 周辺の平均標高取得
+    fAveHeight = heightList[ ((i2-1)<=heightList['i']) & (heightList['i'] <= (i2+1)) & ((j2-1)<=heightList['j']) & (heightList['j'] <= (j2+1)) ]['Height'].mean()
+    fAveHeight = round(fAveHeight,1)
+
+	# 周囲の平均標高と比較して、10%以上高ければ値を持たせる(1とする)
+    if (fAveHeight*1.1 < fHeight):
+        gradient.append(1)
+    else:
+        gradient.append(0)
+        
+    # デバッグ用情報プロット
+    #print('id=' + str(i2) + '_' + str(j2) + ' ' + 'Height=' + str(fHeight) + ' ' + 'AreaHeight=' + str(fAveHeight))
+
+#斜度判定結果を配列に格納する(標高配列にGradient列として新規追加)
+heightList['Gradient'] = gradient
 
 
-# ---- 地図データを作成し、ポリゴンを重ねる ----
+## ---- 地図データを作成し、ポリゴンを重ねる ----
 # 地図データの作成 (+初期表示設定)
 mapData = folium.Map(location=[fOriginLat,fOriginLon], zoom_start=13, tiles='Stamen Terrain')
 
@@ -147,27 +170,43 @@ my_feature_collection = FeatureCollection(featureList)
 #print (my_feature_collection)
 #print ('\n')
 
-# 形状データと標高データを紐付ける
+# 形状データと標高データを紐付ける(斜度表示)
 mapData.choropleth(
     name='choropleth',
     geo_data=my_feature_collection, # 形状データの設定 (GeoJSON形式で渡す)
     key_on='feature.id',            # 形状データの設定 (どの要素をキーとするか)
-    data=hightList,                 # 標高値の設定 (Pandas行列データを渡す)
+    data=heightList,                # 標高値の設定 (Pandas行列データを渡す)
+    columns=['id', 'Gradient'],     # 標高値の設定 (第一要素がキー、第二要素が値)
+    threshold_scale=[0,0.5,1],      # 凡例の設定
+    fill_color='PuRd',              # 表示設定 (色)
+    fill_opacity=0.4,               # 表示設定 (塗りつぶしの透明度)
+    line_opacity=0.2,               # 表示設定 (線の透明度)
+    legend_name='Gradient (Red:10% higher than neighbor average)'  # 表示設定 (凡例)
+)
+mapData.save('Output_Gradient.html')
+
+# 形状データと標高データを紐付ける(標高表示)
+mapData.choropleth(
+    name='choropleth',
+    geo_data=my_feature_collection, # 形状データの設定 (GeoJSON形式で渡す)
+    key_on='feature.id',            # 形状データの設定 (どの要素をキーとするか)
+    data=heightList,                # 標高値の設定 (Pandas行列データを渡す)
     columns=['id', 'Height'],       # 標高値の設定 (第一要素がキー、第二要素が値)
-    threshold_scale=RegendScale,    # 凡例の設定
-    fill_color=sFillColor,          # 表示設定 (色)
+    threshold_scale=[0,600,800,1000,1200],    # 凡例の設定
+    fill_color='PuRd',              # 表示設定 (色)
     fill_opacity=0.4,               # 表示設定 (塗りつぶしの透明度)
     line_opacity=0.2,               # 表示設定 (線の透明度)
     legend_name='Height[m]'         # 表示設定 (凡例)
 )
+mapData.save('Output_Height.html')
 
 # 円マーカーをマップに追加
-for i in range(0,len(hightList)):
+for i in range(0,len(heightList)):
 
     # 値取得
-    fLat = float(hightList['Lat'][i])
-    fLon = float(hightList['Lon'][i])
-    fHeight = float(hightList['Height'][i])
+    fLat = float(heightList['Lat'][i])
+    fLon = float(heightList['Lon'][i])
+    fHeight = float(heightList['Height'][i])
     sColor = '#008000'
     popup = 'Safety'
 
@@ -181,9 +220,8 @@ for i in range(0,len(hightList)):
 
     # 地点情報を地図に追加してゆく
     folium.CircleMarker([fLat, fLon], radius=20, popup=popup, color=sColor, fill_color=sColor).add_to(mapData)
+mapData.save('Output_Height2.html')
 
-# 地図データをHTMLとして出力
-mapData.save('Output.html')
 
 #---------------------------------------------------------------------
 # Reference
